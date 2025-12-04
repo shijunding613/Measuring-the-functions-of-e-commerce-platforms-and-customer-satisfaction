@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公元740-760：全球文明演义 (v18.0 终极完全体)</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        /* --- 全局设置 --- */
+        body { margin: 0; padding: 0; overflow: hidden; background: #dcd6c5; font-family: "Noto Serif SC", "Songti SC", serif; }
+        #map { width: 100vw; height: 100vh; background: #dcd6c5; filter: sepia(20%) contrast(95%) brightness(95%); }
+
+        /* --- UI: 顶部 --- */
+        #top-bar {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            width: 500px; text-align: center; z-index: 1000;
+            background: rgba(255, 252, 245, 0.95);
+            border: 1px solid #8d6e63; border-radius: 4px; padding: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        #year-display { font-size: 32px; font-weight: 900; color: #3e2723; margin: 0; text-shadow: 1px 1px 0 #fff; letter-spacing: 2px;}
+        #event-display { font-size: 13px; color: #d84315; font-weight: bold; margin-top: 5px; min-height: 20px; }
+
+        /* --- UI: 左上角搜索 --- */
+        #search-panel {
+            position: absolute; top: 20px; left: 20px; z-index: 2000;
+            display: flex; gap: 5px; background: rgba(255, 252, 245, 0.95);
+            padding: 8px; border-radius: 4px; border: 1px solid #8d6e63;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        #search-input { width: 180px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; outline: none; background: #fffdf5; }
+        .btn-icon { width: 32px; height: 32px; border: none; border-radius: 4px; cursor: pointer; color: #fff; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+        .btn-search { background: #4e342e; }
+        .btn-voice { background: #1976d2; }
+        .btn-voice.listening { animation: pulse 1.5s infinite; background: #e53935; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(229,57,53, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(229,57,53, 0); } 100% { box-shadow: 0 0 0 0 rgba(229,57,53, 0); } }
+        #search-toast { position: absolute; top: 70px; left: 20px; z-index: 2000; background: #333; color: #fff; padding: 8px 12px; border-radius: 4px; font-size: 12px; opacity: 0; transition: opacity 0.5s; pointer-events: none; }
+
+        /* --- UI: 右侧总控面板 --- */
+        #control-panel {
+            position: absolute; top: 80px; right: 20px; width: 280px; bottom: 240px; 
+            background: #fffdf5; border: 1px solid #a1887f; border-radius: 8px;
+            padding: 15px; font-family: -apple-system, sans-serif; overflow-y: auto; z-index: 1000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        .panel-title { 
+            font-size: 14px; font-weight: bold; color: #4e342e; margin-bottom: 10px; 
+            border-left: 4px solid #d32f2f; padding-left: 8px; display: flex; justify-content: space-between; align-items: center;
+        }
+        
+        .play-controls { display: flex; gap: 8px; margin-bottom: 15px; }
+        .btn-main { flex: 1; padding: 8px; border: none; border-radius: 4px; color: white; font-weight: bold; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 5px; transition: opacity 0.2s;}
+        .btn-play { background: #388e3c; } .btn-play:hover { opacity: 0.9; }
+        .btn-reset { background: #c62828; } .btn-reset:hover { opacity: 0.9; }
+
+        .gesture-list { background: #e0f2f1; padding: 8px; border-radius: 4px; margin-bottom: 15px; border: 1px solid #b2dfdb; }
+        .gesture-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 3px; color: #00695c; }
+        .gesture-icon { font-weight: bold; width: 50px; }
+
+        .status-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 15px; }
+        .status-item { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #333; }
+        .status-tag { padding: 2px 6px; border-radius: 3px; background: #eee; color: #999; font-size: 10px; min-width: 32px; text-align: center;}
+        .status-tag.active { background: #e8f5e9; color: #2e7d32; }
+        .status-tag.done { background: #e3f2fd; color: #1565c0; }
+
+        .timeline-box { margin-bottom: 15px; background: #f5f5f5; padding: 8px; border-radius: 4px; }
+        .timeline-labels { display: flex; justify-content: space-between; font-size: 10px; color: #666; margin-bottom: 2px; }
+        input[type=range] { width: 100%; height: 4px; background: #ccc; border-radius: 2px; outline: none; }
+
+        .focus-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .btn-focus { padding: 8px; border: none; border-radius: 4px; color: white; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: transform 0.1s;}
+        .btn-focus:hover { transform: translateY(-1px); }
+
+        /* --- UI: 摄像头悬浮窗 --- */
+        #camera-wrapper {
+            position: absolute; bottom: 20px; right: 20px; width: 240px; height: 180px;
+            background: #000; border: 2px solid #333; border-radius: 8px; z-index: 2000;
+            overflow: hidden; display: none; /* 默认关闭 */
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        #camera-status {
+            position: absolute; top: 0; left: 0; right: 0; padding: 4px; 
+            background: rgba(0,0,0,0.6); color: #fff; font-size: 11px; text-align: center;
+        }
+        #camera-loader {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #ccc; font-size: 12px; text-align: center; width: 100%;
+        }
+        #output_canvas { width: 100%; height: 100%; transform: scaleX(-1); position: absolute; top: 0; left: 0; }
+        #camera-video { display: none; }
+
+        #btn-cam-toggle {
+            position: absolute; top: 20px; right: 20px; z-index: 2000;
+            background: #d32f2f; color: white; border: none; padding: 8px 12px;
+            border-radius: 4px; font-weight: bold; cursor: pointer; display: flex; gap: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        #btn-cam-toggle.on { background: #388e3c; }
+
+        /* --- UI: 左侧图例 --- */
+        #legend {
+            position: absolute; bottom: 20px; left: 20px; width: 220px; max-height: 55vh; 
+            overflow-y: auto; background: rgba(255, 252, 245, 0.95); 
+            border: 1px solid #8d6e63; padding: 10px; border-radius: 4px; z-index: 1000;
+            font-size: 11px; box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
+        }
+        .legend-sec { font-weight: bold; margin-top: 8px; margin-bottom: 4px; color: #3e2723; border-bottom: 1px solid #ccc; }
+        .legend-row { display: flex; align-items: center; margin-bottom: 2px; }
+        .legend-box { width: 10px; height: 10px; margin-right: 6px; border: 1px solid #555; opacity: 0.8; }
+
+        .empire-label { pointer-events: none; text-align: center; }
+        .label-text { font-size: 11px; font-weight: 900; color: #333; text-shadow: 1px 1px 0 #fff; }
+        .moving-icon { font-size: 24px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.3)); line-height: 1; }
+        .role-tooltip { background: transparent; border: none; font-weight: bold; font-size: 11px; text-shadow: 0 0 3px #fff; margin-top:-10px; }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <div id="top-bar">
+        <h1 id="year-display">公元 740 年</h1>
+        <div id="event-display">历史的齿轮开始转动...</div>
+    </div>
+
+    <div id="search-panel">
+        <input type="text" id="search-input" placeholder="输入关键词...">
+        <button class="btn-icon btn-voice" onclick="startVoice()" title="语音识别">🎤</button>
+        <button class="btn-icon btn-search" onclick="handleSearch()" title="搜索">🔍</button>
+    </div>
+    <div id="search-toast">提示信息</div>
+
+    <button id="btn-cam-toggle" onclick="toggleCamera()">📷 开启手势操控</button>
+
+    <div id="camera-wrapper">
+        <div id="camera-status">系统就绪</div>
+        <div id="camera-loader">初始化 AI 模型...<br>(首次加载可能需要10秒)</div>
+        <video id="camera-video" playsinline></video>
+        <canvas id="output_canvas"></canvas>
+    </div>
+
+    <div id="control-panel">
+        <div class="panel-title">⏯ 历史进程控制</div>
+        <div class="play-controls">
+            <button class="btn-main btn-play" id="btn-play" onclick="togglePlay()">▶ 开始推演</button>
+            <button class="btn-main btn-reset" onclick="resetSim()">↺ 重置</button>
+        </div>
+
+        <div class="panel-title" style="border-left-color:#009688;">🖐️ AI 手势指令表</div>
+        <div class="gesture-list">
+            <div class="gesture-row"><span class="gesture-icon">☝️ 1指</span> <span>粟特商队 (长安)</span></div>
+            <div class="gesture-row"><span class="gesture-icon">✌️ 2指</span> <span>波斯商船 (广州)</span></div>
+            <div class="gesture-row"><span class="gesture-icon">👌 3指</span> <span>安西军团 (龟兹)</span></div>
+            <div class="gesture-row"><span class="gesture-icon">🖖 4指</span> <span>遣唐使 (奈良)</span></div>
+            <div class="gesture-row"><span class="gesture-icon">🖐 5指</span> <span>求法僧人 (印度)</span></div>
+            <div class="gesture-row"><span class="gesture-icon">👊 拳头</span> <span>地中海商人</span></div>
+        </div>
+
+        <div class="panel-title">📊 角色状态监控</div>
+        <div class="status-list">
+            <div class="status-item"><span>🐪 粟特商队</span><span id="st-caravan" class="status-tag">待命</span></div>
+            <div class="status-item"><span>⛵ 波斯商船</span><span id="st-ship" class="status-tag">待命</span></div>
+            <div class="status-item"><span>⚔️ 安西唐军</span><span id="st-army" class="status-tag">待命</span></div>
+            <div class="status-item"><span>📜 日本遣唐使</span><span id="st-envoy" class="status-tag">待命</span></div>
+            <div class="status-item"><span>☸️ 求法僧人</span><span id="st-monk" class="status-tag">待命</span></div>
+            <div class="status-item"><span>🏺 地中海商人</span><span id="st-merchant" class="status-tag">待命</span></div>
+        </div>
+
+        <div class="panel-title">⏳ 时间轴</div>
+        <div class="timeline-box">
+            <div class="timeline-labels"><span>740</span><span id="timeline-val">740</span><span>760</span></div>
+            <input type="range" id="timeline-slider" min="740" max="760" step="0.1" value="740" oninput="onTimelineInput(this.value)">
+        </div>
+
+        <div class="panel-title">🔭 区域聚焦</div>
+        <div class="focus-grid">
+            <button class="btn-focus" style="background:#3e2723" onclick="flyTo([35, 105], 4)">🌏 东亚</button>
+            <button class="btn-focus" style="background:#512da8" onclick="flyTo([30, 45], 4)">☪️ 中东</button>
+            <button class="btn-focus" style="background:#bf360c" onclick="flyTo([0, 105], 4)">⛵ 东南亚</button>
+            <button class="btn-focus" style="background:#455a64" onclick="flyTo([15, -90], 4)">🗿 美洲</button>
+        </div>
+        <button class="btn-focus" style="width:100%; background:#212121; margin-top:6px;" onclick="flyTo([30, 80], 3)">🚀 全球上帝视角</button>
+    </div>
+
+    <div id="legend">
+        </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // === 1. 地图初始化 ===
+        const map = L.map('map', { zoomControl: false, attributionControl: false, center: [35, 80], zoom: 3, minZoom: 2, maxZoom: 7, worldCopyJump: true });
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}', { maxZoom: 8 }).addTo(map);
+
+        function flyTo(latlng, zoom) { map.flyTo(latlng, zoom, { duration: 1.5 }); }
+
+        // === 2. 完整数据 (24个政权 + 6个角色) ===
+        const civilizations = [
+            // 东亚
+            { name: "大唐帝国", cn: "大唐 (Tang)", center: [34,108], color: "#d32f2f", coords: [[22,105],[30,122],[42,118],[44,100],[43,85],[42,70],[36,80],[28,98]], group: "东亚", keywords:["大唐","中国"] },
+            { name: "回鹘汗国", cn: "回鹘 (Uyghur)", center: [47,105], color: "#1976d2", coords: [[44,90],[50,90],[52,110],[50,120],[45,120],[43,110],[44,100]], group: "东亚", keywords:["回鹘"] },
+            { name: "吐蕃帝国", cn: "吐蕃 (Tibet)", center: [32,90], color: "#795548", coords: [[27,85],[28,78],[32,76],[36,78],[37,85],[36,95],[34,102],[28,100],[26,90]], group: "东亚", keywords:["吐蕃","西藏"] },
+            { name: "南诏", cn: "南诏 (Nanzhao)", center: [25,100], color: "#00bcd4", coords: [[22,98],[27,98],[27,103],[22,103]], group: "东亚", keywords:["南诏","云南"] },
+            { name: "渤海国", cn: "渤海 (Balhae)", center: [43,128], color: "#5d4037", coords: [[40,125],[44,125],[46,130],[44,135],[41,130]], group: "东亚", keywords:["渤海"] },
+            { name: "新罗", cn: "新罗 (Silla)", center: [36,128], color: "#009688", coords: [[35,126],[38,126],[38,129],[35,129]], group: "东亚", keywords:["新罗","朝鲜"] },
+            { name: "日本", cn: "日本 (Japan)", center: [36,138], color: "#e91e63", coords: [[31,130],[34,135],[38,140],[40,140],[36,132]], group: "东亚", keywords:["日本","奈良"] },
+            // 中东中亚
+            { name: "黑衣大食", cn: "黑衣大食 (Abbasid)", center: [30,45], color: "#1b5e20", coords: [[15,45],[25,55],[30,60],[38,65],[42,69],[44,60],[42,45],[36,36],[32,34],[30,30],[20,38],[12,42]], group: "中东", keywords:["大食","阿拉伯"] },
+            { name: "可萨汗国", cn: "可萨 (Khazars)", center: [46,48], color: "#673ab7", coords: [[43,40],[48,40],[50,50],[46,55],[42,48]], group: "中东", keywords:["可萨"] },
+            // 欧洲
+            { name: "拜占庭", cn: "拜占庭 (Byzantine)", center: [39,32], color: "#9c27b0", coords: [[38,15],[40,18],[42,20],[42,28],[40,35],[36,36],[35,25],[36,22]], group: "欧洲", keywords:["拜占庭"] },
+            { name: "法兰克", cn: "法兰克 (Franks)", center: [48,5], color: "#2196f3", coords: [[43,0],[50,2],[52,8],[48,12],[45,10],[42,4]], group: "欧洲", keywords:["法兰克","法国"] },
+            { name: "保加利亚", cn: "保加利亚 (Bulgaria)", center: [43,25], color: "#7cb342", coords: [[42,22],[44,22],[44,28],[42,28]], group: "欧洲", keywords:["保加利亚"] },
+            { name: "阿瓦尔", cn: "阿瓦尔 (Avar)", center: [47,19], color: "#fbc02d", coords: [[45,16],[48,16],[48,22],[45,22]], group: "欧洲", keywords:["阿瓦尔"] },
+            { name: "科尔多瓦", cn: "科尔多瓦 (Cordoba)", center: [40,-4], color: "#009688", coords: [[36,-5],[42,-8],[43,-2],[37,0]], group: "欧洲", keywords:["科尔多瓦","西班牙"] },
+            { name: "伦巴第", cn: "伦巴第 (Lombards)", center: [45,10], color: "#ff9800", coords: [[43,8],[46,8],[46,13],[44,13]], group: "欧洲", keywords:["伦巴第","意大利"] },
+            // 南亚东南亚
+            { name: "三佛齐", cn: "三佛齐 (Srivijaya)", center: [0,102], color: "#3f51b5", coords: [[6,100],[0,104],[-5,105],[-4,102],[2,98]], group: "南亚", keywords:["三佛齐","印尼"] },
+            { name: "真腊", cn: "真腊 (Chenla)", center: [12,105], color: "#ff9800", coords: [[10,102],[15,105],[14,108],[10,107]], group: "南亚", keywords:["真腊","高棉"] },
+            { name: "遮娄其", cn: "遮娄其 (Chalukya)", center: [16,76], color: "#ff5722", coords: [[14,74],[18,74],[18,80],[14,80]], group: "南亚", keywords:["遮娄其","印度"] },
+            { name: "帕拉王朝", cn: "帕拉 (Pala)", center: [24,88], color: "#e91e63", coords: [[22,85],[26,85],[26,92],[22,90]], group: "南亚", keywords:["帕拉","孟加拉"] },
+            // 非洲美洲
+            { name: "加纳帝国", cn: "加纳 (Ghana)", center: [15,-8], color: "#ffc107", coords: [[13,-12],[18,-10],[17,-4],[12,-5]], group: "其他", keywords:["加纳"] },
+            { name: "马库里亚", cn: "马库里亚 (Makuria)", center: [18,31], color: "#8e24aa", coords: [[16,30],[20,30],[20,33],[16,33]], group: "其他", keywords:["马库里亚"] },
+            { name: "阿克苏姆", cn: "阿克苏姆 (Axum)", center: [14,39], color: "#e91e63", coords: [[12,36],[16,38],[15,42],[10,43]], group: "其他", keywords:["阿克苏姆"] },
+            { name: "玛雅文明", cn: "玛雅 (Maya)", center: [18,-90], color: "#009688", coords: [[16,-94],[21,-91],[21,-87],[16,-88],[14,-92]], group: "其他", keywords:["玛雅","美洲"] },
+            { name: "瓦里帝国", cn: "瓦里 (Wari)", center: [-12,-75], color: "#5d4037", coords: [[-8,-79],[-9,-75],[-14,-72],[-17,-70],[-17,-74],[-10,-79]], group: "其他", keywords:["瓦里"] }
+        ];
+
+        const roles = {
+            caravan: { id: 'caravan', name: "粟特商队", keywords:["粟特","商队"], icon: "🐪", path: [[34.2, 108.9], [40.1, 94.6], [42.8, 75.3], [33.3, 44.4]], marker: null },
+            ship: { id: 'ship', name: "波斯商船", keywords:["波斯","船"], icon: "⛵", path: [[23.1, 113.2], [-2.9, 104.7], [7.8, 80.7], [25.0, 55.0]], marker: null },
+            army: { id: 'army', name: "安西唐军", keywords:["安西","唐军"], icon: "⚔️", path: [[41.7, 82.9], [42.5, 71.3]], marker: null },
+            envoy: { id: 'envoy', name: "日本遣唐使", keywords:["遣唐使","日本"], icon: "📜", path: [[34.7, 135.8], [33.6, 130.4], [34.2, 108.9]], marker: null },
+            monk: { id: 'monk', name: "求法僧人", keywords:["僧","和尚"], icon: "☸️", path: [[25.1, 85.4], [29.6, 91.1], [34.2, 108.9]], marker: null },
+            merchant: { id: 'merchant', name: "地中海商人", keywords:["地中海","商人"], icon: "🏺", path: [[41.0, 28.9], [36.8, 10.1], [37.9, -4.8]], marker: null }
+        };
+
+        // 渲染地图内容
+        civilizations.forEach(civ => {
+            L.polygon(civ.coords, { color: civ.color, weight: 1, opacity: 0.8, fillColor: civ.color, fillOpacity: 0.2 }).addTo(map);
+            L.marker(L.polygon(civ.coords).getBounds().getCenter(), { 
+                icon: L.divIcon({ className: 'empire-label', html: `<span class="label-text" style="color:${civ.color}">${civ.name}</span>`, iconSize: [100, 20], iconAnchor: [50, 10] }) 
+            }).addTo(map);
+        });
+
+        for (let k in roles) {
+            let r = roles[k];
+            r.marker = L.marker(r.path[0], { icon: L.divIcon({ className: 'moving-icon', html: r.icon, iconSize:[30,30], iconAnchor:[15,15] }), zIndexOffset: 1000 }).addTo(map);
+            r.marker.bindTooltip(`<div>${r.name}</div>`, { permanent: true, direction: "top", className: "role-tooltip", offset: [0, -10] });
+        }
+
+        // 生成图例
+        const legendGroups = {};
+        civilizations.forEach(civ => {
+            if (!legendGroups[civ.group]) legendGroups[civ.group] = [];
+            legendGroups[civ.group].push(civ);
+        });
+        const legendDiv = document.getElementById('legend');
+        for (let group in legendGroups) {
+            let html = `<div class="legend-sec">${group}</div>`;
+            legendGroups[group].forEach(civ => {
+                html += `<div class="legend-row"><span class="legend-box" style="background:${civ.color}"></span> ${civ.cn}</div>`;
+            });
+            legendDiv.innerHTML += html;
+        }
+
+        // === 3. 核心升级：智能语音/模糊搜索 ===
+        
+        // 同音字纠错字典
+        const correctionMap = {
+            "苏特": "粟特", "速特": "粟特", "苏克": "粟特",
+            "波丝": "波斯", "博士": "波斯",
+            "安息": "安西", "江西": "安西",
+            "遣唐": "遣唐使", "遣堂": "遣唐使",
+            "求法": "求法僧人", "和尚": "求法僧人",
+            "地中海": "地中海商人", "罗马": "地中海商人",
+            "大石": "大食", "黑衣": "黑衣大食",
+            "但罗斯": "怛罗斯", "达罗斯": "怛罗斯",
+            "回沪": "回鹘", "辉虎": "回鹘",
+            "南朝": "南诏", "南兆": "南诏",
+            "马雅": "玛雅"
+        };
+        const stopWords = ["帮我", "查找", "搜索", "定位", "去", "看", "在哪里", "位置", "一下", "那个"];
+
+        function normalizeInput(text) {
+            let cleanText = text.replace(/[.,?!。，？！]/g, '');
+            stopWords.forEach(w => cleanText = cleanText.replace(new RegExp(w, 'g'), ''));
+            for (let wrong in correctionMap) {
+                if (cleanText.includes(wrong)) cleanText = cleanText.replace(wrong, correctionMap[wrong]);
+            }
+            return cleanText.trim();
+        }
+
+        function handleSearch(txt) {
+            const rawInput = (txt || document.getElementById('search-input').value).trim();
+            if (!rawInput) return;
+            const keyword = normalizeInput(rawInput);
+            document.getElementById('search-input').value = keyword;
+
+            // 匹配逻辑: 角色 > 国家
+            for (let k in roles) {
+                const r = roles[k];
+                if (r.name.includes(keyword) || keyword.includes(r.name) || r.keywords.some(kw => keyword.includes(kw))) {
+                    flyTo(r.marker.getLatLng(), 6);
+                    r.marker.openTooltip();
+                    showToast(`✅ 已定位: ${r.name}`);
+                    return;
+                }
+            }
+            for (let c of civilizations) {
+                if (c.name.includes(keyword) || c.cn.includes(keyword) || (c.keywords && c.keywords.some(kw => keyword.includes(kw)))) {
+                    flyTo(c.center, 5);
+                    showToast(`✅ 已定位: ${c.name}`);
+                    return;
+                }
+            }
+            showToast(`❌ 未找到: "${keyword}"`);
+        }
+
+        function startVoice() {
+            if (!window.webkitSpeechRecognition) { alert("请使用 Chrome/Edge 浏览器"); return; }
+            const r = new webkitSpeechRecognition(); 
+            r.lang = 'zh-CN'; r.interimResults = false;
+            r.onstart = () => {
+                document.querySelector('.btn-voice').classList.add('listening');
+                showToast("🎤 聆听中... (如: 粟特商队)");
+            };
+            r.onresult = (e) => { 
+                const txt = e.results[0][0].transcript; 
+                handleSearch(txt); 
+            };
+            r.onend = () => document.querySelector('.btn-voice').classList.remove('listening');
+            r.start();
+        }
+
+        function showToast(msg) { const t = document.getElementById('search-toast'); t.innerText=msg; t.style.opacity=1; setTimeout(()=>t.style.opacity=0, 3000); }
+        document.getElementById('search-input').addEventListener('keypress', function(e) { if(e.key==='Enter') handleSearch(); });
+
+        // === 4. 动画与时间轴逻辑 ===
+        const startYear = 740, endYear = 760;
+        let simState = { isPlaying: false, year: 740, speed: 0.008, req: null };
+        const events = [
+            {y: 742, t:"【大唐】开元盛世尾声，版图极盛"}, {y: 750, t:"【中东】阿拔斯革命，黑衣大食建立"},
+            {y: 751, t:"【军事】怛罗斯之战：唐军与大食遭遇"}, {y: 755, t:"【大唐】安史之乱爆发，盛世终结"}
+        ];
+        let lastEv = -1;
+
+        function updateSim() {
+            if(!simState.isPlaying) return;
+            simState.year += simState.speed;
+            if(simState.year >= endYear) { simState.isPlaying = false; updateBtn(); return; }
+            applyState(simState.year);
+            simState.req = requestAnimationFrame(updateSim);
+        }
+
+        function applyState(y) {
+            document.getElementById('year-display').innerText = `公元 ${Math.floor(y)} 年`;
+            document.getElementById('timeline-slider').value = y;
+            document.getElementById('timeline-val').innerText = y.toFixed(1);
+            let iy = Math.floor(y);
+            if(iy !== lastEv) {
+                let ev = events.find(e => e.y === iy);
+                if(ev) document.getElementById('event-display').innerText = ev.t;
+                lastEv = iy;
+            }
+            const p = (y - startYear) / (endYear - startYear);
+            for(let k in roles) {
+                let r = roles[k];
+                let rp = p;
+                if(k === 'army') {
+                    rp = Math.min((y - 740)/(751-740), 1);
+                    updateTag(`st-${k}`, rp >= 1 ? "战败" : (simState.isPlaying ? "行进" : "待命"), rp >= 1 ? "done" : (simState.isPlaying ? "active" : ""));
+                } else {
+                    updateTag(`st-${k}`, simState.isPlaying ? "行进" : (p>=1 ? "抵达" : "待命"), simState.isPlaying ? "active" : "");
+                }
+                let idx = Math.floor(rp * (r.path.length - 1));
+                if(idx < r.path.length - 1 && idx >= 0) {
+                    let p1 = r.path[idx], p2 = r.path[idx+1], t = (rp * (r.path.length - 1)) - idx;
+                    r.marker.setLatLng([p1[0] + (p2[0]-p1[0])*t, p1[1] + (p2[1]-p1[1])*t]);
+                }
+            }
+        }
+
+        function updateTag(id, text, cls) {
+            const el = document.getElementById(id);
+            el.innerText = text; el.className = `status-tag ${cls}`;
+        }
+
+        function togglePlay() { 
+            simState.isPlaying = !simState.isPlaying; 
+            updateBtn(); 
+            if(simState.isPlaying) updateSim(); else cancelAnimationFrame(simState.req);
+        }
+        
+        function resetSim() {
+            simState.isPlaying = false; cancelAnimationFrame(simState.req); simState.year = startYear;
+            updateBtn(); applyState(startYear);
+        }
+
+        function updateBtn() {
+            document.getElementById('btn-play').innerText = simState.isPlaying ? "⏸ 暂停" : "▶ 开始推演";
+        }
+
+        function onTimelineInput(v) {
+            simState.year = parseFloat(v); simState.isPlaying = false; updateBtn(); applyState(simState.year);
+        }
+
+        // === 5. AI 手势识别 (极速版配置) ===
+        let camera = null, lastGestTime = 0;
+        
+        if (location.protocol === 'file:') { alert("⚠️ 为了使用摄像头和语音，请不要双击打开HTML！\n请使用 VSCode Live Server 或 Localhost。"); }
+
+        // 使用 window.onload 确保库加载完成
+        let hands = null;
+        window.onload = function() {
+            try {
+                hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+                hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 0, // 0=Lite (最快), 1=Full
+                    minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
+                hands.onResults(onHandResults);
+            } catch(e) { console.error("AI Load Error", e); }
+        };
+
+        function toggleCamera() {
+            const vid = document.getElementById('camera-video');
+            const wrap = document.getElementById('camera-wrapper');
+            const btn = document.getElementById('btn-cam-toggle');
+            
+            if(camera) { 
+                camera.stop(); camera=null; wrap.style.display='none'; btn.classList.remove('on'); btn.innerText="📷 开启手势操控"; 
+            } else {
+                if(!hands) { alert("AI 模型加载中..."); return; }
+                wrap.style.display='block'; btn.classList.add('on'); btn.innerText="📷 关闭手势操控";
+                
+                try {
+                    camera = new Camera(vid, { 
+                        onFrame: async ()=>{ await hands.send({image: vid}); }, 
+                        width: 320, // 降低分辨率提速
+                        height: 240 
+                    });
+                    camera.start();
+                } catch(e) { alert("无法启动摄像头: " + e); }
+            }
+        }
+
+        function onHandResults(results) {
+            document.getElementById('camera-loader').style.display = 'none';
+            const ctx = document.getElementById('output_canvas').getContext('2d');
+            const cvs = document.getElementById('output_canvas');
+            
+            ctx.clearRect(0, 0, cvs.width, cvs.height);
+            ctx.drawImage(results.image, 0, 0, cvs.width, cvs.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const lm = results.multiHandLandmarks[0];
+                drawConnectors(ctx, lm, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
+                drawLandmarks(ctx, lm, {color: '#FF0000', lineWidth: 1});
+                
+                const fingers = countFingers(lm);
+                triggerGesture(fingers);
+            } else {
+                document.getElementById('camera-status').innerText = "等待手势...";
+            }
+        }
+
+        function countFingers(lm) {
+            const tips = [8, 12, 16, 20], pips = [6, 10, 14, 18];
+            let c = 0;
+            tips.forEach((tip, i) => { if(lm[tip].y < lm[pips[i]].y) c++; });
+            if(Math.abs(lm[4].x - lm[17].x) > 0.2) c++;
+            return c;
+        }
+
+        function triggerGesture(c) {
+            if(Date.now() - lastGestTime < 1500) return;
+            let target = null, label = "";
+            
+            if(c===1) { target = roles.caravan; label = "粟特商队"; }
+            else if(c===2) { target = roles.ship; label = "波斯商船"; }
+            else if(c===3) { target = roles.army; label = "安西军团"; }
+            else if(c===4) { target = roles.envoy; label = "日本遣唐使"; }
+            else if(c===5) { target = roles.monk; label = "求法僧人"; }
+            else if(c===0) { target = roles.merchant; label = "地中海商人"; }
+
+            if(target) {
+                document.getElementById('camera-status').innerText = `识别: ${c===0?'拳头':c+'指'} -> ${label}`;
+                flyTo(target.marker.getLatLng(), 6);
+                showToast(`🖐️ 手势跳转: ${label}`);
+                lastGestTime = Date.now();
+            }
+        }
+
+        // 初始化
+        applyState(740);
+    </script>
+</body>
+</html>
